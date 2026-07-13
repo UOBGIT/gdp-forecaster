@@ -87,7 +87,7 @@ if uploaded_file is not None:
     else:
         QoQ = False
 
-    if len(selected_variables) == 0 and len(selected_GDP) == 0:
+    if len(selected_variables) == 0:
         st.warning("Please select at least one variable from the sidebar.")
 
     else:
