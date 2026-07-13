@@ -82,7 +82,7 @@ if uploaded_file is not None:
         key="sel_exog"
     )
 
-    if len(selected_GDP) > 0 and selected_GDP[0] == "HKGDP_qoq":
+    if selected_GDP == "HKGDP_qoq":
         QoQ = True
     else:
         QoQ = False
@@ -114,7 +114,7 @@ if uploaded_file is not None:
             default_exog = [x for x in available_exog_controls if x not in ["Covid_dummy", "Protest_dummy"]]
 
             def load_rec_1():
-                st.session_state.sel_gdp = ["HKGDP_qoq"]
+                st.session_state.sel_gdp = "HKGDP_qoq"
                 st.session_state.sel_vars = ["Imports", "HSI", "FFR"]
                 st.session_state.lag_val = 7
                 st.session_state.lambda_val = 0.35
@@ -123,7 +123,7 @@ if uploaded_file is not None:
                 st.session_state.sel_exog = default_exog
 
             def load_rec_2():
-                st.session_state.sel_gdp = ["HKGDP_qoq"]
+                st.session_state.sel_gdp = "HKGDP_qoq"
                 st.session_state.sel_vars = available_variables # Selects ALL
                 st.session_state.lag_val = 4
                 st.session_state.lambda_val = 0.4
@@ -132,7 +132,7 @@ if uploaded_file is not None:
                 st.session_state.sel_exog = default_exog
 
             def load_rec_3():
-                st.session_state.sel_gdp = ["HKGDP_yoy"]
+                st.session_state.sel_gdp = "HKGDP_yoy"
                 st.session_state.sel_vars = ["Imports", "HSI", "FFR"]
                 st.session_state.lag_val = 5
                 st.session_state.lambda_val = 0.4
@@ -141,7 +141,7 @@ if uploaded_file is not None:
                 st.session_state.sel_exog = default_exog
 
             def load_rec_4():
-                st.session_state.sel_gdp = ["HKGDP_yoy"]
+                st.session_state.sel_gdp = "HKGDP_yoy"
                 st.session_state.sel_vars = available_variables # Selects ALL
                 st.session_state.lag_val = 5
                 st.session_state.lambda_val = 0.4
