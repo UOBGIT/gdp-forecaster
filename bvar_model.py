@@ -924,53 +924,56 @@ def clean_timeseries_dataset(df, col_names):
     Cleans a raw macroeconomic dataset by keeping only specified columns 
     and dropping rows with any missing values, maximizing the date range.
     
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        The raw dataset (likely with many NaNs at the beginning of series).
-    col_names : list of str
-        The specific columns you want to keep for your analysis.
-        
     Returns:
     --------
-    pd.DataFrame
-        The cleaned dataset containing only the requested columns, with no NaNs,
-        sorted chronologically.
+    df_clean : pd.DataFrame
+    raw_excess_dict : dict
+        A dictionary containing lists of raw data points that exist BEYOND 
+        the final balanced row (i.e., leading indicator data).
     """
-    # 1. Validate inputs: Check if the requested columns actually exist
     missing_cols = [col for col in col_names if col not in df.columns]
     if missing_cols:
         raise ValueError(f"Cannot find the following columns in the DataFrame: {missing_cols}")
         
-    # 2. Subset the DataFrame to ONLY the columns we care about
-    # We use .copy() to avoid Pandas 'SettingWithCopy' warnings later
     df_clean = df[col_names].copy()
     
-    # 3. Record how much data we are starting with (for reporting)
-    start_rows = len(df_clean)
+    # ==========================================
+    # NEW: EXTRACT LEADING/EXCESS DATA (BULLETPROOF)
+    # ==========================================
+    raw_excess_dict = {}
     
-    # 4. Drop any row that has even a single NaN in our target columns
+    # 1. Find the index of the very LAST row that has absolutely zero NaNs.
+    # This represents the exact end of your balanced BVAR training matrix.
+    last_valid_row = df_clean.dropna().index[-1]
+    last_valid_loc = df_clean.index.get_loc(last_valid_row)
+    
+    # 2. For each variable, look STRICTLY after that cutoff date.
+    # If Imports has data 2 quarters past where GDP ends, it grabs those 2 quarters.
+    # If FFR has no data past the cutoff, it returns an empty list and is ignored.
+    for col in col_names:
+        # +1 ensures we don't include the cutoff date itself
+        excess_vals = df_clean[col].iloc[last_valid_loc + 1:].dropna().tolist()
+        
+        if excess_vals:
+            raw_excess_dict[col] = excess_vals
+    # ==========================================
+
+    # 3. Drop any row that has even a single NaN to create the balanced BVAR matrix
     df_clean = df_clean.dropna()
     
-    # 5. Sort chronologically (crucial for time-series BVARs)
-    # If the index is datetime, this puts it in perfect order
     try:
         df_clean = df_clean.sort_index()
     except TypeError:
-        pass # If index isn't datetime, sorting still works but isn't strictly necessary
+        pass
         
-    # 6. Report the trimming impact
     end_rows = len(df_clean)
-    dropped_rows = start_rows - end_rows
     
     print(f"Dataset Cleaning Complete:")
-    print(f"  - Starting rows (with NaNs in target cols): {start_rows}")
-    print(f"  - Final clean rows (no NaNs): {end_rows}")
-    print(f"  - Rows dropped: {dropped_rows} ({(dropped_rows/start_rows)*100:.1f}% of data removed)")
-    print(f"  - Start Date: {df_clean.index[0]}")
-    print(f"  - End Date:   {df_clean.index[-1]}\n")
+    print(f"  - Final clean rows: {end_rows} | Start Date: {df_clean.index[0]} | End Date: {df_clean.index[-1]}")
+    if raw_excess_dict:
+        print(f"  - Detected leading excess data (Nowcastable) for: {list(raw_excess_dict.keys())}\n")
     
-    return df_clean
+    return df_clean, raw_excess_dict
 
 # %%
 def create_exog_dict(column_names, string_exog_dict):
@@ -1183,7 +1186,7 @@ def process_data(df, new_cols, covid_df, QoQ = True):
         df["HKGDP"] = df["HKGDP_yoy"]/100
         df=df.drop(columns = "HKGDP_yoy")
 
-    df = clean_timeseries_dataset(df, new_cols)
+    df, raw_excess_dict = clean_timeseries_dataset(df, new_cols)
 
     #==============================================#
     ## ADDING A COVID DUMMY FOR COMPARISON
@@ -1259,7 +1262,7 @@ def process_data(df, new_cols, covid_df, QoQ = True):
     df["China_Covid_Proxy"] = new_covid_df["China_new_cases"]
     df['China_Covid_Proxy'] = df['China_Covid_Proxy'].fillna(0)
 
-    return df
+    return df, raw_excess_dict
 
 
 # %%
