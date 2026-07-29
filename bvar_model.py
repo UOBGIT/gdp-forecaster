@@ -16,6 +16,11 @@ import os
 
 # %%
 def construct_var_matrix(Y, p, X_exog=None):
+
+    # ==========================================================================================
+    # Constructs the Y and X matrices needed for calculations (see equation 11 in Wozniak paper)
+    # ==========================================================================================
+
     Y = np.asarray(Y)
      
     T, n = Y.shape
@@ -263,6 +268,10 @@ def estimate_bvar(Y, p, X_exog = None, lambda_val=0.2, delta=0.5, decay=2, n_dra
     B_prior, V_prior, S_prior, nu_prior = minnesota_prior(
     Y, p, X_exog, lambda_val, delta, decay, exog_dict, constant_var
     ) 
+
+    # ====================================================================================================================================
+    # Posteriors are calculated according to equation 25 in Wozniak, with extra kronecker calculations used for dimensional considerations
+    # =====================================================================================================================================
     
     V_post_inv = np.linalg.inv(V_prior) + np.kron(np.eye(n), X_mat.T @ X_mat)
     V_post = np.linalg.inv(V_post_inv)
@@ -510,7 +519,7 @@ def dynamic_conditional_forecast(Y, p, B_draws, Sigma_draws, h_steps, future_exo
     # Handle the case where no conditions are passed at all (pure unconditional)
     if not condition_dict:
         condition_dict = {}
-        forecast_draws = unconditional_forecast(Y, p, B_draws, Sigma_draws, h_steps, future_exog = None)
+        forecast_draws = unconditional_forecast(Y, p, B_draws, Sigma_draws, h_steps, future_exog = future_exog)
         return forecast_draws
     
     Y = np.asarray(Y)
@@ -580,6 +589,7 @@ def dynamic_conditional_forecast(Y, p, B_draws, Sigma_draws, h_steps, future_exo
                 # Extract the specific values for the variables locked at this step h
                 cond_vals_h = np.array([condition_dict[idx][h] for idx in cond_idx_h])
 
+                # Calculates new mean and variance for free variables
                 mu_star = mu_f + Sigma_fc @ Sigma_cc_inv @ (cond_vals_h - mu_c)
                 Sigma_star = Sigma_ff - Sigma_fc @ Sigma_cc_inv @ Sigma_fc.T
 
@@ -718,6 +728,11 @@ def forecast_graph(forecast_draws, actual_HKGDP, test_dates, p, lambda_val, delt
 
 # %%
 def build_condition_dict(test, cond_setup, standardization_dict):
+
+    # ================================================================================================
+    # Makes a dictionary of conditioned values, standardizing and converting the key to a column index
+    # ================================================================================================
+
     condition_dict = {}
     for key in cond_setup.keys():
         index = test.columns.get_loc(key)
@@ -813,6 +828,10 @@ def plot_pure_forecast(forecast_draws, forecast_dates, standardization_dict,
 
 # %%
 def grid_search (df, col_spec, lag_vals, lambda_vals, deltas, decays, training_cutoffs, exog_list, exog_dict, h_steps, n_draws, test_HKGDP, test_dates, cond_setup = None, rolling = False, window = None):
+
+    # ==============================================================================================================
+    # Runs a grid search across a given range of hyperparameters keeping exogenous variables and dictionary constant
+    # ==============================================================================================================
     
     RMSE_list = np.zeros((len(training_cutoffs), len(lag_vals), len(lambda_vals), len(deltas), len(decays)))
 
@@ -899,7 +918,9 @@ def grid_search (df, col_spec, lag_vals, lambda_vals, deltas, decays, training_c
 # %%
 def standardize_df(df):
   
-
+    # ===================================================================================================================
+    # Standardizes data WITHOUT splitting into training and testing data - used for pure forecasting
+    # ===================================================================================================================
 
     Y_means = df.mean().values
     Y_stds = df.std().values
@@ -1009,7 +1030,11 @@ def create_exog_dict(column_names, string_exog_dict):
 
 # %%
 def rank_specification(RMSE_list, lag_vals, lambda_vals, deltas, decays, training_cutoffs):
-    
+
+    # =============================================================================================================================
+    # Pairs with grid search - takes the list of RMSEs and calculates the total rank of each model specification with printed output
+    # ==============================================================================================================================
+
     # 1. Flatten the 5D array into a long list of records
     records = []
     for i, cutoff in enumerate(training_cutoffs):
@@ -1123,6 +1148,10 @@ def plot_gdp_with_events(df, event_dates, gdp_col='GDP', line_color='red'):
     #plt.show()
 # %%
 def process_data(df, new_cols, covid_df, QoQ = True):
+
+    # ==============================================================================================================
+    # Makes the proper variable transformations and adds exogenous variables to the dataframe
+    # ==============================================================================================================
 
     df.columns = ["Quarter", "HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "HSI", "PPI", "PST_Volume", "FFR", "China_PMI_NEO", "CCPI"]
 
@@ -1267,8 +1296,10 @@ def process_data(df, new_cols, covid_df, QoQ = True):
 
 # %%
 def slice_df(df, cutoff_date):
-    ## INITIALIZING TRAINING DATA BASED ON 2023Q3 CUTOFF
 
+    # ===================================================================================================================
+    # Separates the dataframe into a training and testing subset according to a cutoff date. It also standardizes the data
+    # ===================================================================================================================
 
     train = df.loc[df.index <= cutoff_date].dropna()
     test  = df.loc[df.index > cutoff_date].dropna()
@@ -1296,7 +1327,12 @@ def slice_df(df, cutoff_date):
 # %%
 def integrated_forecast_graph(df, cutoff_date, col_spec, p, lambda_val, delta, decay, exog_list, exog_dict, n_draws, h_steps, plot_var_idx = 0, 
                               print_eq_idx = 0, condition_dict = None, include_training=True, future_exog = None):
-    
+
+    # ==========================================================================================
+    # Produces a forecast graph given a training cut-off date
+    # ==========================================================================================
+
+
     ### Special app.py consideration ###
     coeff_fig = None
     ### Special app.py consideration ###
@@ -1454,6 +1490,10 @@ def fit_arima_and_eval(p: int, d: int, q: int, train: pd.Series, test: pd.Series
 
 # %%
 def arma_grid_search (Y, p_vals, q_vals, training_cutoffs, h_steps):
+
+    # =============================================================================================================================
+    # Same as regular grid search but this one is used for a range of ARMA specifications
+    # ==============================================================================================================================
 
     ARMA_RMSE = np.zeros((len(training_cutoffs), len(p_vals), len(q_vals)))
 
