@@ -192,6 +192,7 @@ if uploaded_file is not None:
             st.sidebar.header("3. Display Options")
             show_plot = st.sidebar.checkbox("Show Coefficient Plot")
             show_equation = st.sidebar.checkbox("Show Estimating Equation")
+            show_coef_table = st.sidebar.checkbox("Show Coefficient Table")
             target_var_idx = st.sidebar.number_input("Variable Index to Plot/Print (0 = first column)", value=0)
 
                         # ==========================================
@@ -218,11 +219,11 @@ if uploaded_file is not None:
                                 raw_vals = raw_excess_dict[var_name]
                                 mean_val = std_dict_temp[var_name][0]
                                 std_val = std_dict_temp[var_name][1]
-                                
                                 for h in range(min(len(raw_vals), h_steps)):
                                     z_score = (raw_vals[h] - mean_val) / std_val
+
                                     # Inject the z-score into the specific text box
-                                    st.session_state[f"cond_{var_name}_{h}"] = f"{z_score:.3f}"
+                                    st.session_state[f"cond_{var_name}_{h}"] = f"{z_score:.5f}"
                         
                         st.rerun()
                 else:
@@ -311,27 +312,47 @@ if uploaded_file is not None:
                     # --- DYNAMICALLY SET PLOT/EQUATION ARGS ---
                     plot_idx = target_var_idx if show_plot else None
                     eq_idx = target_var_idx if show_equation else None
+                    coef_table_idx = target_var_idx if show_coef_table else None
 
                     # --- ESTIMATE BVAR ---
                     # Create a temporary string buffer to catch the print() statement
                     equation_buffer = io.StringIO()
                     
                     # Run the function, but redirect any print() outputs to our buffer
-                    with contextlib.redirect_stdout(equation_buffer):
-                        B_draws, Sigma_draws, B_post, S_post = estimate_bvar(
-                            Y_stand[final_cols], 
-                            p=lag_val, 
-                            lambda_val=lambda_val, 
-                            delta=delta, 
-                            decay=decay, 
-                            X_exog=X_exog, 
-                            exog_dict=exog_dict, 
-                            n_draws=n_draws, 
-                            plot_var_idx=plot_idx, 
-                            print_eq_idx=eq_idx, 
-                            var_names=final_cols, 
-                            exog_names=exog_list
-                        )
+                    if coef_table_idx is not None:
+                        with contextlib.redirect_stdout(equation_buffer):
+                            B_draws, Sigma_draws, B_post, S_post, coef_table = estimate_bvar(
+                                Y_stand[final_cols], 
+                                p=lag_val, 
+                                lambda_val=lambda_val, 
+                                delta=delta, 
+                                decay=decay, 
+                                X_exog=X_exog, 
+                                exog_dict=exog_dict, 
+                                n_draws=n_draws, 
+                                plot_var_idx=plot_idx, 
+                                print_eq_idx=eq_idx, 
+                                var_names=final_cols, 
+                                exog_names=exog_list,
+                                coef_table_var_idx = coef_table_idx
+                            )
+                    else:
+                        with contextlib.redirect_stdout(equation_buffer):
+                            B_draws, Sigma_draws, B_post, S_post = estimate_bvar(
+                                Y_stand[final_cols], 
+                                p=lag_val, 
+                                lambda_val=lambda_val, 
+                                delta=delta, 
+                                decay=decay, 
+                                X_exog=X_exog, 
+                                exog_dict=exog_dict, 
+                                n_draws=n_draws, 
+                                plot_var_idx=plot_idx, 
+                                print_eq_idx=eq_idx, 
+                                var_names=final_cols, 
+                                exog_names=exog_list,
+                                coef_table_var_idx = coef_table_idx
+                                                    )
 
                     # --- DISPLAY ESTIMATING EQUATION ---
                     if show_equation:
@@ -349,6 +370,10 @@ if uploaded_file is not None:
                         # Grab the figure created inside estimate_bvar and display it
                         st.pyplot(plt.gcf())
                         plt.clf() # Clear it so it doesn't bleed into the forecast plot
+
+                    if show_coef_table:
+                        st.subheader("Downloadable Table of Coefficient Means")
+                        st.dataframe(coef_table)
 
                     # --- GENERATE FORECAST ---
                     conditional_forecast_draws = dynamic_conditional_forecast(
@@ -435,25 +460,47 @@ if uploaded_file is not None:
                     }
                     exog_dict = create_exog_dict(final_cols, diff_exog_dict)
 
-                    with contextlib.redirect_stdout(hist_equation_buffer):
+                    if show_coef_table:
+                        with contextlib.redirect_stdout(hist_equation_buffer):
+                            hist_coeff_fig, coef_table = integrated_forecast_graph(
+                                df=df,
+                                cutoff_date=pd.to_datetime(hist_cutoff), # Convert date input to pandas datetime
+                                col_spec=final_cols,
+                                p=lag_val,
+                                lambda_val=lambda_val,
+                                delta=delta,
+                                decay=decay,
+                                exog_list=selected_exog, # Uses the same exog selection from the sidebar!
+                                exog_dict=exog_dict,
+                                n_draws=n_draws,
+                                h_steps=h_steps,
+                                plot_var_idx=target_var_idx if show_plot else None,
+                                print_eq_idx=target_var_idx if show_equation else None,
+                                coef_table_var_idx = target_var_idx if show_coef_table else None,
+                                condition_dict=condition_dict,
+                                include_training=True,
+                                future_exog=None
+                            )
+                    else:
                         hist_coeff_fig = integrated_forecast_graph(
-                            df=df,
-                            cutoff_date=pd.to_datetime(hist_cutoff), # Convert date input to pandas datetime
-                            col_spec=final_cols,
-                            p=lag_val,
-                            lambda_val=lambda_val,
-                            delta=delta,
-                            decay=decay,
-                            exog_list=selected_exog, # Uses the same exog selection from the sidebar!
-                            exog_dict=exog_dict,
-                            n_draws=n_draws,
-                            h_steps=h_steps,
-                            plot_var_idx=target_var_idx if show_plot else None,
-                            print_eq_idx=target_var_idx if show_equation else None,
-                            condition_dict=condition_dict,
-                            include_training=True,
-                            future_exog=None
-                        )
+                                df=df,
+                                cutoff_date=pd.to_datetime(hist_cutoff), # Convert date input to pandas datetime
+                                col_spec=final_cols,
+                                p=lag_val,
+                                lambda_val=lambda_val,
+                                delta=delta,
+                                decay=decay,
+                                exog_list=selected_exog, # Uses the same exog selection from the sidebar!
+                                exog_dict=exog_dict,
+                                n_draws=n_draws,
+                                h_steps=h_steps,
+                                plot_var_idx=target_var_idx if show_plot else None,
+                                print_eq_idx=target_var_idx if show_equation else None,
+                                coef_table_var_idx = target_var_idx if show_coef_table else None,
+                                condition_dict=condition_dict,
+                                include_training=True,
+                                future_exog=None
+                            )
                     
                     # --- DISPLAY HISTORICAL EQUATION ---
                     if show_equation:
@@ -466,6 +513,10 @@ if uploaded_file is not None:
                     if show_plot:
                         st.subheader("📊 Historical Test - Posterior Coefficients")
                         st.pyplot(hist_coeff_fig)
+
+                    if show_coef_table:
+                        st.subheader("Coefficients Table")
+                        st.dataframe(coef_table)
 
                     # --- DISPLAY HISTORICAL FORECAST GRAPH ---
                     st.subheader("📈 Historical Test - Forecast vs Actuals")
