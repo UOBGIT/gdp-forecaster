@@ -244,13 +244,13 @@ def minnesota_prior(Y, p, X_exog=None, lambda_val=0.2, delta=0.5, decay=2, exog_
 
 # %%
 def estimate_bvar(Y, p, X_exog = None, lambda_val=0.2, delta=0.5, decay=2, n_draws=2000, exog_dict = None, constant_var = 1e6, 
-                  plot_var_idx = None, print_eq_idx = None, var_names = None, exog_names = None):
+                  plot_var_idx = None, print_eq_idx = None, var_names = None, exog_names = None, coef_table_var_idx = None):
+    
     ##Estimate BVAR with Minnesota prior (Normal-Inverse-Wishart)
     
     T, n = Y.shape
 
     r=0
-    
     if X_exog is not None:
         r = X_exog.shape[1]
 
@@ -289,6 +289,8 @@ def estimate_bvar(Y, p, X_exog = None, lambda_val=0.2, delta=0.5, decay=2, n_dra
     L_V = cholesky(V_post, lower=True) 
     df = nu_post
     L_S = cholesky(S_post, lower=True)
+
+    
 
     for s in range(n_draws):
         A = np.zeros((n, n))
@@ -350,9 +352,9 @@ def estimate_bvar(Y, p, X_exog = None, lambda_val=0.2, delta=0.5, decay=2, n_dra
         ax.set_xlim(-0.5, len(x_labels) - 0.5)
         ax.legend()
         plt.tight_layout()
-        #plt.show()
+        plt.show()
 
-        # ==========================================
+    # ==========================================
     # NEW: EQUATION PRINTING LOGIC
     # ==========================================
     if print_eq_idx is not None:
@@ -420,8 +422,62 @@ def estimate_bvar(Y, p, X_exog = None, lambda_val=0.2, delta=0.5, decay=2, n_dra
         print(eq_str)
         print("="*60 + "\n")
     # ==========================================
-    return B_draws, Sigma_draws, B_post, S_post
 
+    # ==========================================
+    # NEW: COEFFICIENT TABLE DATAFRAME LOGIC
+    # ==========================================
+    coef_table = None
+    if coef_table_var_idx is not None:
+        # Safety check for valid index
+        if coef_table_var_idx >= n:
+            raise ValueError(f"coef_table_var_idx ({coef_table_var_idx}) must be less than n ({n}).")
+            
+        # Use defaults if names not provided
+        if var_names is None:
+            var_names = [f"Var{i}" for i in range(n)]
+        if exog_names is None and r > 0:
+            exog_names = [f"Exog{i}" for i in range(r)]
+
+        # Extract the posterior mean vector for the target equation
+        eq_coeffs = B_post[:, coef_table_var_idx]
+
+        # Define the structure: Columns and Rows
+        cols = ['Intercept'] + var_names + (exog_names if r > 0 else [])
+        rows = ['Level'] + [f'Lag {i}' for i in range(1, p + 1)]
+
+        # Initialize empty DataFrame
+        coef_table = pd.DataFrame(index=rows, columns=cols, dtype=float)
+
+        # 1. Populate the 'Level' row (Intercept + Exogenous Controls)
+        coef_table.loc['Level', 'Intercept'] = eq_coeffs[0]
+        if r > 0:
+            # Exogenous variables are at the very end of the coefficient vector
+            coef_table.loc['Level', exog_names] = eq_coeffs[1 + n*p : 1 + n*p + r]
+
+        # 2. Populate the 'Lag X' rows (Endogenous Variables)
+        for lag in range(1, p + 1):
+            start_idx = 1 + (lag - 1) * n
+            end_idx = 1 + lag * n
+            lag_coeffs = eq_coeffs[start_idx : end_idx]
+            coef_table.loc[f'Lag {lag}', var_names] = lag_coeffs
+
+        # Replace NaNs with empty strings for a cleaner visual matrix
+        coef_table = coef_table.fillna('')
+        
+        # Print to console
+        target_name = var_names[coef_table_var_idx]
+        # print(f"\n--- Posterior Mean Coefficients for: {target_name} ---")
+        # print(coef_table)
+        # print("-" * 50 + "\n")
+
+    # ==========================================
+    # CONDITIONAL RETURN
+    # ==========================================
+    if coef_table_var_idx is not None:
+        return B_draws, Sigma_draws, B_post, S_post, coef_table
+    else:
+        return B_draws, Sigma_draws, B_post, S_post
+    
 # %%
 def unconditional_forecast(Y, p, B_draws, Sigma_draws, h_steps, future_exog = None):
     """
@@ -1326,7 +1382,7 @@ def slice_df(df, cutoff_date):
     return Y_stand, train, test, standardization_dict
 # %%
 def integrated_forecast_graph(df, cutoff_date, col_spec, p, lambda_val, delta, decay, exog_list, exog_dict, n_draws, h_steps, plot_var_idx = 0, 
-                              print_eq_idx = 0, condition_dict = None, include_training=True, future_exog = None):
+                              print_eq_idx = 0, coef_table_var_idx = None, condition_dict = None, include_training=True, future_exog = None):
 
     # ==========================================================================================
     # Produces a forecast graph given a training cut-off date
@@ -1384,8 +1440,12 @@ def integrated_forecast_graph(df, cutoff_date, col_spec, p, lambda_val, delta, d
 
     #print(future_exog_true)
 
-    B_draws, Sigma_draws, B_post, S_post = estimate_bvar(Y_stand[col_spec], p=p, lambda_val=lambda_val, delta=delta, decay=decay, X_exog = X_exog, exog_dict = exog_dict, 
-                                                         n_draws = n_draws, plot_var_idx = plot_var_idx, print_eq_idx = print_eq_idx, var_names = col_spec, exog_names = updated_exog_list)
+    if coef_table_var_idx is not None:
+        B_draws, Sigma_draws, B_post, S_post, coef_table = estimate_bvar(Y_stand[col_spec], p=p, lambda_val=lambda_val, delta=delta, decay=decay, X_exog = X_exog, exog_dict = exog_dict, 
+                                                                    n_draws = n_draws, plot_var_idx = plot_var_idx, print_eq_idx = print_eq_idx, var_names = col_spec, exog_names = updated_exog_list, coef_table_var_idx=coef_table_var_idx)
+    else:
+        B_draws, Sigma_draws, B_post, S_post = estimate_bvar(Y_stand[col_spec], p=p, lambda_val=lambda_val, delta=delta, decay=decay, X_exog = X_exog, exog_dict = exog_dict, 
+                                                            n_draws = n_draws, plot_var_idx = plot_var_idx, print_eq_idx = print_eq_idx, var_names = col_spec, exog_names = updated_exog_list, coef_table_var_idx=coef_table_var_idx)
     
     ### Special app.py consideration ###
     if plot_var_idx is not None:
@@ -1409,8 +1469,11 @@ def integrated_forecast_graph(df, cutoff_date, col_spec, p, lambda_val, delta, d
     forecast_graph(conditional_forecast_draws, test_HKGDP, test_dates=test.index, p=p, lambda_val=lambda_val, delta=delta, decay=decay, 
                    include_training=True, standardization_dict=standardization_dict, last_train_value=None, train=train)
     
+    if coef_table_var_idx is not None:
+        return coeff_fig, coef_table
     ### Special app.py consideration ###
-    return coeff_fig
+    else:
+        return coeff_fig
     ### Special app.py consideration ###
     
     
