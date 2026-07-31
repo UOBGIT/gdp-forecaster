@@ -4,13 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import io
 import contextlib
-# import importlib
+#import importlib
 
 
 
 # Import the functions you saved in Step 2
 from bvar_model import (
-    new_process_data,
+    updated_process_data,
     standardize_df,
     slice_df,
     construct_var_matrix,
@@ -23,10 +23,9 @@ from bvar_model import (
     VAR_grid_search, 
     rank_var_specification,
     create_exog_dict,
-    plot_gdp_with_events,
-    made_up_function_does_nothing 
+    plot_gdp_with_events
 )
-# importlib.reload(bvar_model)
+#importlib.reload(bvar_model)
 # ==========================================
 # PRO-TIP: CACHING
 # ==========================================
@@ -45,7 +44,7 @@ def load_covid_control_data():
 def load_and_process_data(uploaded_file, new_cols, covid_df, QoQ):
     df_raw = pd.read_excel(uploaded_file)
 
-    df, raw_excess_dict = new_process_data(df_raw, new_cols, covid_df, QoQ)
+    df, raw_excess_dict = updated_process_data(df_raw, new_cols, covid_df, QoQ)
 
     return df, raw_excess_dict
 # ==========================================
@@ -91,8 +90,10 @@ if uploaded_file is not None:
 
     if selected_GDP == "HKGDP_qoq":
         QoQ = True
+        st.success("Endogenous variables will be processed as annualized QoQ variables.")
     else:
         QoQ = False
+        st.success("Endogenous variables will be processed as YoY variables.")
 
     if len(selected_variables) == 0 and not(selected_GDP):
         st.warning("Please select at least one variable from the sidebar.")
@@ -153,8 +154,8 @@ if uploaded_file is not None:
                 st.session_state.sel_vars = original_variables # Selects ALL
                 st.session_state.lag_val = 5
                 st.session_state.lambda_val = 0.4
-                st.session_state.delta_val = 0.3
-                st.session_state.decay_val = 1
+                st.session_state.delta_val = 0.2
+                st.session_state.decay_val = 2
                 st.session_state.sel_exog = default_exog
 
             # 2. ASSIGN CALLBACKS TO BUTTONS
