@@ -4,10 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import io
 import contextlib
+# import importlib
+
+
 
 # Import the functions you saved in Step 2
 from bvar_model import (
-    process_data,
+    new_process_data,
     standardize_df,
     slice_df,
     construct_var_matrix,
@@ -20,9 +23,10 @@ from bvar_model import (
     VAR_grid_search, 
     rank_var_specification,
     create_exog_dict,
-    plot_gdp_with_events 
+    plot_gdp_with_events,
+    made_up_function_does_nothing 
 )
-
+# importlib.reload(bvar_model)
 # ==========================================
 # PRO-TIP: CACHING
 # ==========================================
@@ -40,7 +44,9 @@ def load_covid_control_data():
 @st.cache_data
 def load_and_process_data(uploaded_file, new_cols, covid_df, QoQ):
     df_raw = pd.read_excel(uploaded_file)
-    df, raw_excess_dict = process_data(df_raw, new_cols, covid_df, QoQ)
+
+    df, raw_excess_dict = new_process_data(df_raw, new_cols, covid_df, QoQ)
+
     return df, raw_excess_dict
 # ==========================================
 
@@ -58,7 +64,8 @@ uploaded_file = st.sidebar.file_uploader("Upload Excel File", type=['xlsx'])
 # Only show the rest of the sidebar if a file is uploaded
 if uploaded_file is not None:
 
-    available_variables = ["Imports", "Exports", "RSV", "HSI", "PPI", "PST_Volume", "FFR", "China_PMI_NEO"]
+    available_variables = ["Imports", "Exports", "RSV", "TR_HSI", "HSI", "HSI_Turnover", "PPI", "PST_Volume", "PST_Value", "FFR", "China_PMI_NEO"]
+    original_variables = ["Imports", "Exports", "RSV", "TR_HSI", "PPI", "PST_Volume", "FFR", "China_PMI_NEO"]
     
     selected_GDP = st.sidebar.selectbox(
         label="Choose HKGDP specification for the BVAR",
@@ -95,6 +102,7 @@ if uploaded_file is not None:
             final_cols = ["HKGDP"] + selected_variables
 
             covid_df = load_covid_control_data()
+
             df, raw_excess_dict = load_and_process_data(uploaded_file, final_cols, covid_df, QoQ)
 
             # for exog_var in available_exog_controls:
@@ -115,7 +123,7 @@ if uploaded_file is not None:
 
             def load_rec_1():
                 st.session_state.sel_gdp = "HKGDP_qoq"
-                st.session_state.sel_vars = ["Imports", "HSI", "FFR"]
+                st.session_state.sel_vars = ["Imports", "TR_HSI", "FFR"]
                 st.session_state.lag_val = 7
                 st.session_state.lambda_val = 0.35
                 st.session_state.delta_val = 0.2
@@ -124,7 +132,7 @@ if uploaded_file is not None:
 
             def load_rec_2():
                 st.session_state.sel_gdp = "HKGDP_qoq"
-                st.session_state.sel_vars = available_variables # Selects ALL
+                st.session_state.sel_vars = original_variables # Selects ALL
                 st.session_state.lag_val = 4
                 st.session_state.lambda_val = 0.4
                 st.session_state.delta_val = 0.2
@@ -133,7 +141,7 @@ if uploaded_file is not None:
 
             def load_rec_3():
                 st.session_state.sel_gdp = "HKGDP_yoy"
-                st.session_state.sel_vars = ["Imports", "HSI", "FFR"]
+                st.session_state.sel_vars = ["Imports", "TR_HSI", "FFR"]
                 st.session_state.lag_val = 5
                 st.session_state.lambda_val = 0.4
                 st.session_state.delta_val = 0.3
@@ -142,7 +150,7 @@ if uploaded_file is not None:
 
             def load_rec_4():
                 st.session_state.sel_gdp = "HKGDP_yoy"
-                st.session_state.sel_vars = available_variables # Selects ALL
+                st.session_state.sel_vars = original_variables # Selects ALL
                 st.session_state.lag_val = 5
                 st.session_state.lambda_val = 0.4
                 st.session_state.delta_val = 0.3
@@ -182,7 +190,7 @@ if uploaded_file is not None:
             delta = st.sidebar.slider("Cross Variable Tightness (Delta)", min_value=0.01, max_value=1.0, value=0.2, step=0.01, key = "delta_val")
             decay = st.sidebar.slider("Shrinkage Over Time (Decay)", min_value=1.0, max_value=4.0, value=2.0, step=1.0, key = "decay_val")
             n_draws = st.sidebar.slider("Number Draws", min_value=500, max_value=8000, value=2000, step=500)
-            h_steps = st.sidebar.slider("Forecast Horizon (h_steps)", min_value=1, max_value=8, value=4, step=1)
+            h_steps = st.sidebar.slider("Forecast Horizon (h_steps)", min_value=1, max_value=10, value=4, step=1)
             interval_width = st.sidebar.slider("Confidence Level", min_value=1, max_value=99, value=68, step=1)
             
             # Ensure integers
@@ -290,11 +298,12 @@ if uploaded_file is not None:
                     # --- DATA PREP ---
                     Y_stand, standardization_dict = standardize_df(df)
                     diff_exog_dict = {
-                        "HKGDP": ["FFR", "China_PMI_NEO"], "Imports": ["FFR", "China_PMI_NEO"], 
-                        "HSI": ["FFR", "China_PMI_NEO"], "PPI": ["FFR", "China_PMI_NEO"], 
-                        "Exports": ["FFR", "China_PMI_NEO"], "RSV": ["FFR", "China_PMI_NEO"], 
-                        "PST_Volume": ["FFR", "China_PMI_NEO"], "FFR": ["China_PMI_NEO"], 
-                        "China_PMI_NEO": ["FFR"]
+                    "HKGDP": ["FFR", "China_PMI_NEO"], "Imports": ["FFR", "China_PMI_NEO"], 
+                    "TR_HSI": ["FFR", "China_PMI_NEO"], "HSI": ["FFR", "China_PMI_NEO"], 
+                    "HSI_Turnover": ["FFR", "China_PMI_NEO"], "PST_Value": ["FFR", "China_PMI_NEO"], 
+                    "PPI": ["FFR", "China_PMI_NEO"], "Exports": ["FFR", "China_PMI_NEO"], 
+                    "RSV": ["FFR", "China_PMI_NEO"], "PST_Volume": ["FFR", "China_PMI_NEO"], 
+                    "FFR": ["China_PMI_NEO"], "China_PMI_NEO": ["FFR"]
                     }
                     exog_dict = create_exog_dict(final_cols, diff_exog_dict)
 
@@ -452,12 +461,14 @@ if uploaded_file is not None:
                     # Wrap the call to redirect print statements
 
                     diff_exog_dict = {
-                        "HKGDP": ["FFR", "China_PMI_NEO"], "Imports": ["FFR", "China_PMI_NEO"], 
-                        "HSI": ["FFR", "China_PMI_NEO"], "PPI": ["FFR", "China_PMI_NEO"], 
-                        "Exports": ["FFR", "China_PMI_NEO"], "RSV": ["FFR", "China_PMI_NEO"], 
-                        "PST_Volume": ["FFR", "China_PMI_NEO"], "FFR": ["China_PMI_NEO"], 
-                        "China_PMI_NEO": ["FFR"]
+                    "HKGDP": ["FFR", "China_PMI_NEO"], "Imports": ["FFR", "China_PMI_NEO"], 
+                    "TR_HSI": ["FFR", "China_PMI_NEO"], "HSI": ["FFR", "China_PMI_NEO"], 
+                    "HSI_Turnover": ["FFR", "China_PMI_NEO"], "PST_Value": ["FFR", "China_PMI_NEO"], 
+                    "PPI": ["FFR", "China_PMI_NEO"], "Exports": ["FFR", "China_PMI_NEO"], 
+                    "RSV": ["FFR", "China_PMI_NEO"], "PST_Volume": ["FFR", "China_PMI_NEO"], 
+                    "FFR": ["China_PMI_NEO"], "China_PMI_NEO": ["FFR"]
                     }
+                    
                     exog_dict = create_exog_dict(final_cols, diff_exog_dict)
 
                     if show_coef_table:
