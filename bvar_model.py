@@ -447,7 +447,7 @@ def estimate_bvar(Y, p, X_exog = None, lambda_val=0.2, delta=0.5, decay=2, n_dra
         ax.set_xlim(-0.5, len(x_labels) - 0.5)
         ax.legend()
         plt.tight_layout()
-        plt.show()
+       #plt.show()
 
     # ==========================================
     # NEW: EQUATION PRINTING LOGIC
