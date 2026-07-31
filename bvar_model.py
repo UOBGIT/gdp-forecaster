@@ -14,6 +14,9 @@ import matplotlib.dates as mdates
 from statsmodels.tsa.api import VAR
 import os
 
+#%%
+def made_up_function_does_nothing():
+    print("THIS DID NOTHING")
 # %%
 def construct_var_matrix(Y, p, X_exog=None):
 
@@ -47,13 +50,18 @@ def construct_var_matrix(Y, p, X_exog=None):
         X = X_endog
 
     return Y_dep, X
+#%%
 
-def process_data(df, new_cols, QoQ = True):
+def new_process_data(df, new_cols, covid_df, QoQ = True):
 
-    df.columns = ["Quarter", "HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "HSI", "PPI", "PST_Volume", "FFR", "China_PMI_NEO", "CCPI"]
-
-    cols = ["HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "HSI", "PPI", "PST_Volume", "FFR", "China_PMI_NEO", "CCPI"]
+    # ==============================================================================================================
+    # Makes the proper variable transformations and adds exogenous variables to the dataframe
+    # ==============================================================================================================
+    print("BLAGH")
+    df.columns = ["Quarter", "HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "TR_HSI", "HSI", "HSI_Turnover", "PPI", "PST_Volume", "PST_Value", "FFR", "China_PMI_NEO", "CCPI"]
     
+    cols = ["HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "TR_HSI", "HSI", "HSI_Turnover", "PPI", "PST_Volume", "PST_Value", "FFR", "China_PMI_NEO", "CCPI"]
+    print(cols)
     df=df.drop(index=0)
 
     ## Changing data to correct types
@@ -62,29 +70,36 @@ def process_data(df, new_cols, QoQ = True):
     df[cols] = df[cols].apply(pd.to_numeric, errors='coerce')
     df = df.set_index('Quarter')
 
-    ## ADJUSTING IMPORTS, EXPORTS, and RETAIL SALES VALUE FOR INFLATION AND MAKING THEM YOY%
+    ## ADJUSTING IMPORTS, EXPORTS, RETAIL SALES VALUE, HSI TURNOVER, AND PST VALUE FOR INFLATION
 
     df["Imports_adj"] = df["Imports"] / df["CCPI"]
     df["Exports_adj"] = df["Exports"] / df["CCPI"]
     df["RSV_adj"] = df["RSV"] / df["CCPI"]
+    df["HSI_Turnover_adj"] = df["HSI_Turnover"] / df["CCPI"]
+    df["PST_Value_adj"] = df["PST_Value"] / df["CCPI"]
 
-    ## Taking YOY% growth for each (INCLUDING China PMI_NEO)
+    ## Taking YOY% growth for select variables (INCLUDING China PMI_NEO and PST_Value)
 
     df["Imports"] = (df["Imports_adj"] - df["Imports_adj"].shift(4))/df["Imports_adj"].shift(4)
     df["Exports"] = (df["Exports_adj"] - df["Exports_adj"].shift(4))/df["Exports_adj"].shift(4)
     df["RSV"] = (df["RSV_adj"] - df["RSV_adj"].shift(4))/df["RSV_adj"].shift(4)
     df["China_PMI_NEO"] = (df["China_PMI_NEO"] - df["China_PMI_NEO"].shift(4))/df["China_PMI_NEO"].shift(4)
+    df["PST_Value"] = (df["PST_Value_adj"] - df["PST_Value_adj"].shift(4))/df["PST_Value_adj"].shift(4)
 
-    df=df.drop(columns = ["Imports_adj", "Exports_adj", "RSV_adj"])
+    df=df.drop(columns = ["Imports_adj", "Exports_adj", "RSV_adj", "PST_Value_adj"])
 
     ## Annualizing Quarterly GDP
 
     df["HKGDP"] = ((1+(df["HKGDP"])/100)**4 - 1)
 
-    ## Taking log difference of Hang Seng Index
+    ## Taking log difference of Hang Seng Index Variables
 
+    df["TR_HSI_log"] = np.log(df["TR_HSI"])
     df["HSI_log"] = np.log(df["HSI"])
+    df["TR_HSI"] = df["TR_HSI_log"].diff()
     df["HSI"] = df["HSI_log"].diff()
+    df["HSI_Turnover_log"] = np.log(df["HSI_Turnover_adj"])
+    df["HSI_Turnover"] = df["HSI_Turnover_log"].diff()
 
     ## Taking first difference of Federal Funds Rate
 
@@ -96,7 +111,7 @@ def process_data(df, new_cols, QoQ = True):
     df["PST_Volume"] = df["PST_Volume"]/100
 
 
-    df = df.drop(columns = ["HSI_log", "CCPI"])
+    df = df.drop(columns = ["TR_HSI_log", "HSI_log", "HSI_Turnover_adj", "HSI_Turnover_log", "CCPI"])
 
     # Get GDP in comparable units as before
 
@@ -112,7 +127,7 @@ def process_data(df, new_cols, QoQ = True):
         df["HKGDP"] = df["HKGDP_yoy"]/100
         df=df.drop(columns = "HKGDP_yoy")
 
-    df = clean_timeseries_dataset(df, new_cols)
+    df, raw_excess_dict = clean_timeseries_dataset(df, new_cols)
 
     #==============================================#
     ## ADDING A COVID DUMMY FOR COMPARISON
@@ -123,8 +138,8 @@ def process_data(df, new_cols, QoQ = True):
     covid_start = '2020Q1'
     covid_end = '2021Q2'
 
-    df["Covid"] = ((df.index < covid_end) & (df.index > covid_start)) 
-    df['Covid'] = df['Covid'].astype(int)
+    df["Covid_dummy"] = ((df.index < covid_end) & (df.index > covid_start)) 
+    df['Covid_dummy'] = df['Covid_dummy'].astype(int)
 
     #==============================================#
     ## ADDING A GLOBAL FINANCIAL CRISIS DUMMY
@@ -135,10 +150,60 @@ def process_data(df, new_cols, QoQ = True):
     gfc_start = '2008Q3'
     gfc_end = '2009Q2'
 
-    df["GFC"] = ((df.index < gfc_end) & (df.index > gfc_start)) 
-    df['GFC'] = df['GFC'].astype(int)
+    df["GFC_dummy"] = ((df.index < gfc_end) & (df.index > gfc_start)) 
+    df['GFC_dummy'] = df['GFC_dummy'].astype(int)
 
-    return df
+    #==============================================#
+    ## ADDING A 2019 HK PROTEST DUMMY
+    #==============================================#
+
+    protest_start = '2019Q2'
+    protest_end = '2019Q4'
+
+    df["Protest_dummy"] = ((df.index < protest_end) & (df.index > protest_start)) 
+    df['Protest_dummy'] = df['Protest_dummy'].astype(int)
+
+
+    ## ADD HONG KONG AND CHINA COVID CONTROLS
+    
+    start_date = "2020-03-01"
+    end_date = "2023-03-01"
+
+    date_range = pd.date_range(start_date, end_date, freq = '3MS')
+
+    covid_df.columns = ["Quarter", "HK_cases", "China_cases"]
+    covid_df.index = covid_df["Quarter"]
+    covid_df.index = pd.to_datetime(covid_df.index)
+    covid_df = covid_df.drop(columns = "Quarter")
+
+    covid_q_array = np.zeros((len(covid_df), 2))
+    covid_q = pd.DataFrame(covid_q_array)
+    covid_q.index = covid_df.index
+    hk_running_max = 0
+    china_running_max = 0
+    for idx in covid_df.index:
+        
+        if covid_df.loc[idx]["HK_cases"] > hk_running_max:
+            hk_running_max = covid_df.loc[idx]["HK_cases"]
+        if covid_df.loc[idx]['China_cases'] > china_running_max:
+            china_running_max = covid_df.loc[idx]['China_cases']
+
+        if idx in date_range:
+            covid_q.loc[idx] = [hk_running_max, china_running_max]
+            hk_running_max = 0
+            china_running_max = 0
+
+    new_covid_df = covid_q.loc[date_range]
+    new_covid_df.columns = ["HK_new_cases", "China_new_cases"]
+
+    #print(new_covid_df)
+
+    df["HK_Covid_Proxy"] = new_covid_df["HK_new_cases"]
+    df['HK_Covid_Proxy'] = df['HK_Covid_Proxy'].fillna(0)
+    df["China_Covid_Proxy"] = new_covid_df["China_new_cases"]
+    df['China_Covid_Proxy'] = df['China_Covid_Proxy'].fillna(0)
+
+    return df, raw_excess_dict
 
 
 # %%
