@@ -15,8 +15,7 @@ from statsmodels.tsa.api import VAR
 import os
 
 #%%
-def made_up_function_does_nothing():
-    print("THIS DID NOTHING")
+
 # %%
 def construct_var_matrix(Y, p, X_exog=None):
 
@@ -52,17 +51,22 @@ def construct_var_matrix(Y, p, X_exog=None):
     return Y_dep, X
 #%%
 
-def new_process_data(df, new_cols, covid_df, QoQ = True):
+def updated_process_data(df, new_cols, covid_df, QoQ = True):
 
     # ==============================================================================================================
     # Makes the proper variable transformations and adds exogenous variables to the dataframe
     # ==============================================================================================================
-    print("BLAGH")
+
     df.columns = ["Quarter", "HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "TR_HSI", "HSI", "HSI_Turnover", "PPI", "PST_Volume", "PST_Value", "FFR", "China_PMI_NEO", "CCPI"]
-    
+
     cols = ["HKGDP", "HKGDP_yoy", "Imports", "Exports", "RSV", "TR_HSI", "HSI", "HSI_Turnover", "PPI", "PST_Volume", "PST_Value", "FFR", "China_PMI_NEO", "CCPI"]
-    print(cols)
+    
     df=df.drop(index=0)
+
+    if QoQ:
+        diff_length = 1
+    else:
+        diff_length = 4
 
     ## Changing data to correct types
 
@@ -78,40 +82,66 @@ def new_process_data(df, new_cols, covid_df, QoQ = True):
     df["HSI_Turnover_adj"] = df["HSI_Turnover"] / df["CCPI"]
     df["PST_Value_adj"] = df["PST_Value"] / df["CCPI"]
 
-    ## Taking YOY% growth for select variables (INCLUDING China PMI_NEO and PST_Value)
 
-    df["Imports"] = (df["Imports_adj"] - df["Imports_adj"].shift(4))/df["Imports_adj"].shift(4)
-    df["Exports"] = (df["Exports_adj"] - df["Exports_adj"].shift(4))/df["Exports_adj"].shift(4)
-    df["RSV"] = (df["RSV_adj"] - df["RSV_adj"].shift(4))/df["RSV_adj"].shift(4)
-    df["China_PMI_NEO"] = (df["China_PMI_NEO"] - df["China_PMI_NEO"].shift(4))/df["China_PMI_NEO"].shift(4)
-    df["PST_Value"] = (df["PST_Value_adj"] - df["PST_Value_adj"].shift(4))/df["PST_Value_adj"].shift(4)
 
-    df=df.drop(columns = ["Imports_adj", "Exports_adj", "RSV_adj", "PST_Value_adj"])
+    
 
     ## Annualizing Quarterly GDP
 
     df["HKGDP"] = ((1+(df["HKGDP"])/100)**4 - 1)
 
-    ## Taking log difference of Hang Seng Index Variables
+    ## Taking logs of all variables except FFR, China PMI NEO and HKGDP
 
     df["TR_HSI_log"] = np.log(df["TR_HSI"])
     df["HSI_log"] = np.log(df["HSI"])
-    df["TR_HSI"] = df["TR_HSI_log"].diff()
-    df["HSI"] = df["HSI_log"].diff()
     df["HSI_Turnover_log"] = np.log(df["HSI_Turnover_adj"])
-    df["HSI_Turnover"] = df["HSI_Turnover_log"].diff()
+    df["Imports_log"] = np.log(df["Imports_adj"])
+    df["Exports_log"] = np.log(df["Exports_adj"])
+    df["RSV_log"] = np.log(df["RSV_adj"])
+    df["PST_Value_log"] = np.log(df["PST_Value_adj"])
 
-    ## Taking first difference of Federal Funds Rate
 
-    df["FFR"] = df["FFR"].diff()
+    ## Taking dynamic log differences + regular difference for FFR
+    df["TR_HSI"] = df["TR_HSI_log"].diff(diff_length)
+    df["HSI"] = df["HSI_log"].diff(diff_length)
+    df["HSI_Turnover"] = df["HSI_Turnover_log"].diff(diff_length)
+    df["Imports"] = df["Imports_log"].diff(diff_length)
+    df["Exports"] = df["Exports_log"].diff(diff_length)
+    df["RSV"] = df["RSV_log"].diff(diff_length)
+    df["PST_Value"] = df["PST_Value_log"].diff(diff_length)
+    df["FFR"] = df["FFR"].diff(diff_length)/100
 
+
+    ## Calculating dynamic percent changes for PPI and PST_Volume since these are indices which can be negative
+
+    df["PPI"] = df["PPI"].pct_change(periods=diff_length)
+    df["PST_Volume"] = df["PST_Volume"].pct_change(periods=diff_length)
+
+
+    
     ## Dividing select variables by 100 to get relatively consistent orders of magnitude
 
-    df["PPI"] = df["PPI"]/100
-    df["PST_Volume"] = df["PST_Volume"]/100
+    df["China_PMI_NEO"] = df["China_PMI_NEO"]/100
+
+    if QoQ:
+        # For LOG-DIFFERENCED variables, just multiply by 4
+        df["TR_HSI"] = df["TR_HSI"] * 4
+        df["HSI"] = df["HSI"] * 4
+        df["HSI_Turnover"] = df["HSI_Turnover"] * 4
+        df["Imports"] = df["Imports"] * 4
+        df["Exports"] = df["Exports"] * 4
+        df["RSV"] = df["RSV"] * 4
+        df["PST_Value"] = df["PST_Value"] * 4
+        
+        # For SIMPLE PERCENTAGE variables, use the compound formula
+        df["PST_Volume"] = ((1+df["PST_Volume"])**4 - 1)  
+        df["PPI"] = ((1+df["PPI"])**4 - 1)   
 
 
-    df = df.drop(columns = ["TR_HSI_log", "HSI_log", "HSI_Turnover_adj", "HSI_Turnover_log", "CCPI"])
+
+    
+    df = df.drop(columns = ["Imports_adj", "Exports_adj", "RSV_adj", "PST_Value_adj", "HSI_Turnover_adj"])
+    df = df.drop(columns = ["TR_HSI_log", "HSI_log", "HSI_Turnover_log", "Imports_log", "Exports_log", "RSV_log", "PST_Value_log", "CCPI"])
 
     # Get GDP in comparable units as before
 
